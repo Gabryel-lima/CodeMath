@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeMath &mdash; 05_fatorial.py</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true}]})"></script>
+<style>
+:root { color-scheme: light dark; --bg:#fbfbfa; --fg:#1c1c1a; --mut:#6b6b66;
+        --line:#e3e3df; --card:#fff; --accent:#8a5a2b; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#161615; --fg:#eeeeec; --mut:#a0a09a; --line:#2e2e2b;
+           --card:#1e1e1c; --accent:#d9a066; } }
+* { box-sizing:border-box; }
+body { margin:0; padding:2.5rem 1.25rem 5rem; background:var(--bg); color:var(--fg);
+       font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { max-width:60rem; margin:0 auto; }
+h1 { font-size:1.5rem; margin:0 0 .25rem; letter-spacing:-.01em; }
+h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.09em;
+      color:var(--mut); margin:2.5rem 0 .75rem; font-weight:600; }
+.sub { color:var(--mut); margin:0 0 2rem; }
+pre { background:var(--card); border:1px solid var(--line); border-radius:8px;
+      padding:1rem 1.1rem; overflow-x:auto; font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; }
+.eq { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--accent);
+      border-radius:8px; padding:.9rem 1.1rem; margin:.6rem 0; overflow-x:auto; }
+.lbl { font-size:.78rem; color:var(--mut); margin:1.2rem 0 .3rem; font-weight:600; }
+.note { color:var(--mut); font-size:.92rem; margin:.2rem 0 1rem; }
+footer { color:var(--mut); font-size:.8rem; margin-top:4rem;
+          border-top:1px solid var(--line); padding-top:1rem; }
+</style></head><body><main>
+<h1>Semântica denotacional</h1>
+<p class="sub">05_fatorial.py</p>
+<h2>Programa</h2>
+<pre># Fatorial. Invariante do laço: fat = (i-1)!  e  i &lt;= n+1
+# sigma: n=5
+# sigma: n=0
+fat = 1
+i = 1
+while i &lt;= n:
+    fat = fat * i
+    i = i + 1</pre>
+<h2>Denotação</h2>
+<div class="eq">$$[\![\,\mathit{fat} := 1;\; i := 1;\; \mathbf{while}\; i \leq n \;\mathbf{do}\; \mathit{fat} := \mathit{fat} \cdot i;\; i := i + 1\,]\!](\sigma) = \mathrm{fix}(F_{1})(\sigma[\mathit{fat} \mapsto 1][i \mapsto 1])$$</div>
+<p class="note">onde</p>
+<div class="eq">$$F_{1}(f)(\sigma) = \begin{cases}f\left(\sigma[\mathit{fat} \mapsto \sigma(\mathit{fat}) \cdot \sigma(i)][i \mapsto \sigma(i) + 1]\right), & \text{se } \sigma(i) \leq \sigma(n) \\ \sigma, & \text{caso contrário}\end{cases}$$</div>
+<h2>Aproximações de Kleene</h2>
+<p class="note">A cadeia F^0 ≤ F^1 ≤ F^2 ≤ … cresce: F^k acerta os estados que terminam em até k voltas do laço e devolve ⊥ nos demais. O menor ponto fixo é o supremo dessa cadeia.</p>
+<div class="lbl">F_{1}^0(⊥)(\sigma) =</div>
+<div class="eq">$$\bot$$</div>
+<div class="lbl">F_{1}^1(⊥)(\sigma) =</div>
+<div class="eq">$$\begin{cases}\bot, & \text{se } \sigma(i) \leq \sigma(n) \\ \sigma, & \text{caso contrário}\end{cases}$$</div>
+<div class="lbl">F_{1}^2(⊥)(\sigma) =</div>
+<div class="eq">$$\begin{cases}\begin{cases}\bot, & \text{se } \sigma(i) + 1 \leq \sigma(n) \\ \sigma[\mathit{fat} \mapsto \sigma(\mathit{fat}) \cdot \sigma(i)][i \mapsto \sigma(i) + 1], & \text{caso contrário}\end{cases}, & \text{se } \sigma(i) \leq \sigma(n) \\ \sigma, & \text{caso contrário}\end{cases}$$</div>
+<h2>Lógica de Hoare</h2>
+<p class="note">Correção parcial: a tripla só diz o que vale SE o programa terminar. Os invariantes I_k não são calculáveis — precisam ser inventados. É a mesma dificuldade do fix, vista de outro ângulo.</p>
+<div class="lbl">precondição mais fraca  wp(c, Q) =</div>
+<div class="eq">$$I_{1}[i \mapsto 1][\mathit{fat} \mapsto 1]$$</div>
+<div class="lbl">pós-condição  Q =</div>
+<div class="eq">$$\mathit{fat} > 0$$</div>
+<div class="lbl">obrigação de prova (preservação de I_{1})</div>
+<div class="eq">$$I_{1} \land i \leq n \Rightarrow I_{1}[i \mapsto i + 1][\mathit{fat} \mapsto \mathit{fat} \cdot i]$$</div>
+<div class="lbl">obrigação de prova (saída de I_{1})</div>
+<div class="eq">$$I_{1} \land \lnot\left(i \leq n\right) \Rightarrow \mathit{fat} > 0$$</div>
+<footer>Gerado por CodeMath.</footer>
+</main></body></html>
