@@ -115,7 +115,10 @@ def expr_to_text(e: Expr) -> str:
     if isinstance(e, BinOp):
         p = _PREC[e.op]
         if e.op == "//":
-            return "⌊" + expr_to_text(e.left) + " / " + expr_to_text(e.right) + "⌋"
+            # dentro de ⌊ ⌋ o `/` e' texto corrido: `⌊a + 5 / 10⌋` leria a + 0,5, entao
+            # numerador e denominador seguem a regra de parenteses da divisao
+            return ("⌊" + _wrap(e.left, p, parent_op=e.op) + " / "
+                    + _wrap(e.right, p, strict=True, parent_op=e.op, side="right") + "⌋")
         if e.op == "**":
             return _wrap(e.left, p, strict=True) + _exponent(e.right)
         sep = _BIN[e.op] if e.op == "%" else " " + _BIN[e.op] + " "
