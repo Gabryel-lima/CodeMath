@@ -273,6 +273,13 @@ class TestUnicode(unittest.TestCase):
         self.assertEqual(expr_to_text(BinOp("/", Var("a"), BinOp("*", Var("b"), Var("c")))),
                          "a / (b · c)")
 
+    def test_divisao_inteira_com_soma_no_numerador(self):
+        # `(a + 5) // 10` saia como `⌊a + 5 / 10⌋`, que le a + 0,5
+        from codemath.unicode_render import expr_to_text
+        self.assertEqual(expr_to_text(ir("y = (a + 5) // 10").value), "⌊(a + 5) / 10⌋")
+        self.assertEqual(expr_to_text(ir("y = a // (b + c)").value), "⌊a / (b + c)⌋")
+        self.assertEqual(expr_to_text(ir("y = a // b").value), "⌊a / b⌋")
+
     def test_nomes_de_estado(self):
         from codemath.unicode_render import tex_name
         self.assertEqual(tex_name(r"\sigma_{12}"), "σ₁₂")

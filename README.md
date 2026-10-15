@@ -186,6 +186,11 @@ Os três últimos foram achados pelo **teste diferencial**
 (`tests/test_fuzz.py`): um gerador monta programas aleatórios com todas
 as construções e o verificador confere cada um contra o Python.
 
+Fora do fuzz (ele compara valores, não texto): `(a + 5) // 10` saía em
+Unicode como `⌊a + 5 / 10⌋`, que se lê `a + 0,5`, porque dentro de `⌊ ⌋` o
+numerador ficava sem parênteses. Apareceu ao desenhar a fórmula num vídeo do
+EduMotion; o LaTeX (`\frac`) estava certo.
+
 ## Lógica de Hoare
 
 `--hoare "POS"` calcula a precondição mais fraca wp(c, Q) para trás.
