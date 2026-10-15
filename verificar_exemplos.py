@@ -20,7 +20,9 @@ from codemath import denote, parse_source, translate
 from codemath.cli import parse_sigma
 from codemath.evaluator import compare
 
-VERDE, VERM, CINZA, FIM = "\033[32m", "\033[31m", "\033[90m", "\033[0m"
+_COR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+VERDE, VERM, CINZA, FIM = (("\033[32m", "\033[31m", "\033[90m", "\033[0m") if _COR
+                           else ("", "", "", ""))
 
 
 def sigmas(source: str):
@@ -36,7 +38,8 @@ def sigmas(source: str):
 
 def main() -> int:
     falhas = 0
-    for path in sorted(glob.glob(os.path.join("exemplos", "*.py"))):
+    base = os.path.dirname(os.path.abspath(__file__))
+    for path in sorted(glob.glob(os.path.join(base, "exemplos", "*.py"))):
         with open(path, encoding="utf-8") as fh:
             source = fh.read()
         nome = os.path.basename(path)
@@ -47,17 +50,29 @@ def main() -> int:
             print(f"{VERM}✗{FIM} {nome}: {exc}")
             falhas += 1
             continue
-        estados, _ = sigmas(source)
+        estados, diverge = sigmas(source)
         for s0 in estados:
             rel = compare(source, den, s0, max_steps=200_000)
-            if rel["ok"]:
+            divergiu = rel.get("mesmo_erro") == "Diverge"
+            if rel["ok"] and divergiu != diverge:
+                # concordam, mas nao com o que o exemplo anuncia
+                falhas += 1
+                esperado = "divergir" if diverge else "terminar"
+                print(f"{VERM}✗ {nome:<24} σ₀={s0} → deveria {esperado}{FIM}")
+            elif rel["ok"] and divergiu:
+                print(f"{CINZA}~ {nome:<24} σ₀={s0} → ambos não terminam{FIM}")
+            elif rel["ok"] and "mesmo_erro" in rel:
+                print(f"{CINZA}~ {nome:<24} σ₀={s0} → ambos falham com "
+                      f"{rel['mesmo_erro']}{FIM}")
+            elif rel["ok"]:
                 final = {k: v for k, v in rel["denotacao"].items()
                          if not k.startswith("#")}
                 print(f"{VERDE}✓{FIM} {nome:<24} σ₀={s0 or '∅'} "
                       f"{CINZA}→ {final}{FIM}")
-            elif "denotacao_erro" in rel and "python_erro" in rel:
-                # os dois lados falharam do mesmo jeito: é o caso divergente
-                print(f"{CINZA}~ {nome:<24} σ₀={s0} → ambos não terminam{FIM}")
+            elif rel.get("inconclusivo"):
+                falhas += 1
+                print(f"{VERM}? {nome:<24} σ₀={s0} → inconclusivo: só um lado "
+                      f"estourou o limite de passos{FIM}")
             else:
                 falhas += 1
                 print(f"{VERM}✗ {nome:<24} σ₀={s0}{FIM}")

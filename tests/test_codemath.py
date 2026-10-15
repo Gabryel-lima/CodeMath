@@ -3,8 +3,8 @@ import sys, os, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from codemath import parse_source, translate, denote
-from codemath.formula import (Assign, Atom, BinOp, BoolOp, Compare, Const, If,
-                              ParAssign, Seq, Var, While)
+from codemath.formula import (Assign, Atom, BinOp, BoolOp, Compare, Const, Func, If,
+                              IfExp, ParAssign, Seq, Skip, UnOp, Var, While)
 from codemath.latex_render import expr_to_latex, render_equations, state_to_latex
 from codemath.rules import CondState, FixApply, Lookup, Named, Update
 from codemath.translator import UnsupportedNode
@@ -49,10 +49,15 @@ class TestTranslator(unittest.TestCase):
             "x = [1, 2]",
             "x[0] = 1",
             "def f(a):\n    return f(a)",          # recursao precisa de fix
-            "def g(a):\n    b = a\n    return b",  # corpo com mais de um stmt
+            "def g(a):\n    while a:\n        a -= 1\n    return a",  # laco em funcao
+            "def h(a):\n    t = t + a\n    return t",  # local lida antes de escrita
+            "def k(a):\n    if a:\n        return 1",  # pode terminar sem return
             "for i in [1, 2]:\n    x = i",          # so range
             "for i in range(0, 10, s):\n    x = i",  # passo nao literal
-            "while x:\n    pass\nelse:\n    y = 1",
+            "for i in range(0, 10, 0):\n    x = i",  # passo zero
+            "lista.append(1)",                       # efeito colateral escondido
+            "break",                                 # fora de laco
+            "x = min(a)",                            # min de iteravel
         ]:
             with self.subTest(codigo=codigo):
                 with self.assertRaises(UnsupportedNode):
@@ -68,6 +73,75 @@ class TestTranslator(unittest.TestCase):
         # o corpo comeca copiando o contador para a variavel do laco
         corpo = c.commands[1].body
         self.assertEqual(corpo.commands[0], Assign("i", Var("#i")))
+
+    def test_atribuicao_multipla_avalia_uma_vez(self):
+        # `x = y = x + 1`: como sequencia, y leria o x ja' atualizado
+        c = ir("x = y = x + 1")
+        e = BinOp("+", Var("x"), Const(1))
+        self.assertEqual(c, ParAssign(("x", "y"), (e, e)))
+
+    def test_range_com_passo_negativo(self):
+        c = ir("for i in range(10, 0, -2):\n    s = i")
+        guarda = c.commands[1].cond
+        self.assertEqual(guarda, Compare(">", Var("#i"), Const(0)))
+
+    def test_for_aninhado_com_mesmo_nome_usa_contadores_distintos(self):
+        c = ir("for i in range(3):\n    for i in range(2):\n        t = i")
+        externo = c.commands[0].target
+        interno = c.commands[1].body.commands[1].target
+        self.assertNotEqual(externo, interno)
+
+    def test_limite_do_range_congelado_quando_o_corpo_o_muda(self):
+        c = ir("for i in range(n):\n    n = n - 1")
+        self.assertEqual(c.commands[1], Assign("#i.fim", Var("n")))
+        self.assertEqual(c.commands[2].cond, Compare("<", Var("#i"), Var("#i.fim")))
+
+    def test_limite_nao_congelado_sem_necessidade(self):
+        c = ir("for i in range(n):\n    s = i")
+        self.assertEqual(len(c.commands), 2)          # contador e while, so
+
+    def test_break_vira_bandeira_na_guarda(self):
+        c = ir("while x < 9:\n    if x == 3:\n        break\n    x = x + 1")
+        self.assertEqual(c.commands[0], Assign("#.brk", Const(False)))
+        guarda = c.commands[1].cond
+        self.assertEqual(guarda.operands[0], UnOp("not", Var("#.brk")))
+
+    def test_resto_do_corpo_protegido_depois_do_salto(self):
+        c = ir("while x < 9:\n    if x == 3:\n        continue\n    x = x + 1")
+        corpo = c.body.commands
+        self.assertEqual(corpo[0], Assign("#.cont", Const(False)))
+        self.assertEqual(corpo[2], If(UnOp("not", Var("#.cont")),
+                                      Assign("x", BinOp("+", Var("x"), Const(1))), Skip()))
+
+    def test_laco_sem_salto_nao_ganha_bandeira(self):
+        self.assertIsInstance(ir("while x < 9:\n    x = x + 1"), While)
+
+    def test_else_do_laco_so_sem_break(self):
+        c = ir("while x:\n    break\nelse:\n    y = 1")
+        self.assertEqual(c.commands[-1], If(UnOp("not", Var("#.brk")),
+                                            Assign("y", Const(1)), Skip()))
+
+    def test_ternario_e_builtins(self):
+        self.assertEqual(ir("y = abs(x) if x else 0").value,
+                         IfExp(Var("x"), Func("abs", (Var("x"),)), Const(0)))
+
+    def test_funcao_com_locais_e_if(self):
+        c = ir("def f(a):\n    t = a * a\n    if t > 9:\n        return t\n    return 0\n"
+               "y = f(x)")
+        quadrado = BinOp("*", Var("x"), Var("x"))
+        self.assertEqual(c.value, IfExp(Compare(">", quadrado, Const(9)), quadrado, Const(0)))
+
+    def test_statements_sem_efeito_viram_skip(self):
+        for codigo in ['"""docstring do programa."""\nx = 1', "x = 1\nprint(x)",
+                       "x = 1\n...", "x = 1\nx + 1"]:
+            with self.subTest(codigo=codigo):
+                self.assertEqual(ir(codigo), Assign("x", Const(1)))
+
+    def test_erro_diz_linha_e_motivo(self):
+        with self.assertRaises(UnsupportedNode) as ctx:
+            ir("x = 1\nlista.append(x)")
+        self.assertIn("linha 2", str(ctx.exception))
+        self.assertIn("efeito colateral", str(ctx.exception))
 
     def test_funcao_pura_expandida(self):
         c = ir("def d(a):\n    return 2 * a\n\nz = d(x + 1)")
@@ -100,6 +174,12 @@ class TestRules(unittest.TestCase):
         d = denote(ir("while x < 3:\n    while y < 3:\n        y = y + 1\n    x = x + 1"))
         nomes = {f.state for f in d.functionals}
         self.assertEqual(len(nomes), 2)
+
+    def test_whiles_em_sequencia_reusam_sigma(self):
+        # escopos separados: o nome do estado ligado vem da profundidade
+        laco = "while x < 3:\n    x = x + 1\n"
+        d = denote(ir(laco * 5))
+        self.assertEqual({f.state for f in d.functionals}, {r"\sigma"})
 
     def test_if_produz_estado_condicional(self):
         d = denote(ir("if x < 0:\n    y = 1\nelse:\n    y = 2"))
@@ -145,9 +225,72 @@ class TestRender(unittest.TestCase):
         eqs = self.tex("x = 0")
         self.assertEqual(eqs[0], r"[\![\,x := 0\,]\!](\sigma) = \sigma[x \mapsto 0]")
 
+    def test_none_nao_e_bottom(self):
+        # None e' um valor; \bot e' "indefinido" -- nao podem se confundir
+        self.assertEqual(expr_to_latex(Const(None)), r"\mathbf{None}")
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_menos_unario_a_direita_ganha_parenteses(self):
+        self.assertEqual(expr_to_latex(BinOp("-", Var("a"), UnOp("-", Var("b")))),
+                         r"a - \left(-b\right)")
+
+    def test_mod_misturado_com_produto(self):
+        self.assertEqual(expr_to_latex(BinOp("*", BinOp("%", Var("a"), Var("b")), Var("c"))),
+                         r"\left(a \bmod b\right) \cdot c")
+
+    def test_corpo_composto_entre_parenteses(self):
+        # sem parenteses nao da' para saber onde o laco termina
+        eq = self.tex("while x < 3:\n    x = x + 1\n    y = x\nz = 0")[0]
+        self.assertIn(r"\mathbf{do}\; \left(x := x + 1;\; y := x\right);\; z := 0", eq)
+
+    def test_nomes_internos(self):
+        from codemath.latex_render import ident
+        self.assertEqual(ident("#i"), r"\hat{i}")
+        self.assertEqual(ident("#i'"), r"\hat{i}'")
+        self.assertEqual(ident("#i.fim"), r"\hat{i}_{\mathrm{fim}}")
+        self.assertEqual(ident("#.brk"), r"\mathsf{brk}")
+
+
+class TestUnicode(unittest.TestCase):
+    def txt(self, code):
+        from codemath.unicode_render import render_equations_text
+        c = ir(code)
+        return render_equations_text(c, denote(c))
+
+    def test_equacao_principal(self):
+        self.assertEqual(self.txt("x = 0\nwhile x < 10:\n    x = x + 1")[0],
+                         "⟦x := 0; while x < 10 do x := x + 1⟧(σ) = fix(F₁)(σ[x ↦ 0])")
+
+    def test_operadores(self):
+        from codemath.unicode_render import expr_to_text
+        e = ir("y = (a // b) % 2 ** n <= -c and not d").value
+        self.assertEqual(expr_to_text(e), "⌊a / b⌋ mod 2^n ≤ −c ∧ ¬d")
+        self.assertEqual(expr_to_text(ir("y = x ** 2").value), "x²")
+
+    def test_mesma_regra_de_parenteses_do_latex(self):
+        from codemath.unicode_render import expr_to_text
+        self.assertEqual(expr_to_text(BinOp("-", Var("a"), BinOp("-", Var("b"), Var("c")))),
+                         "a − (b − c)")
+        self.assertEqual(expr_to_text(BinOp("/", Var("a"), BinOp("*", Var("b"), Var("c")))),
+                         "a / (b · c)")
+
+    def test_nomes_de_estado(self):
+        from codemath.unicode_render import tex_name
+        self.assertEqual(tex_name(r"\sigma_{12}"), "σ₁₂")
+        self.assertEqual(tex_name(r"\sigma^{(4)}"), "σ⁽⁴⁾")
+
+
+class TestAnalise(unittest.TestCase):
+    def test_variavel_do_for_nao_e_livre(self):
+        from codemath.analysis import free_vars
+        self.assertEqual(free_vars(ir("s = 0\nfor i in range(n):\n    s = s + i")), {"n"})
+
+    def test_escrita_em_um_so_ramo_nao_conta(self):
+        from codemath.analysis import free_vars
+        self.assertEqual(free_vars(ir("if c:\n    y = 1\nz = y")), {"c", "y"})
+
+    def test_escrita_nos_dois_ramos_conta(self):
+        from codemath.analysis import free_vars
+        self.assertEqual(free_vars(ir("if c:\n    y = 1\nelse:\n    y = 2\nz = y")), {"c"})
 
 
 class TestSimultaneidade(unittest.TestCase):
@@ -187,6 +330,27 @@ class TestEvaluator(unittest.TestCase):
         # o bug classico: com contador ingenuo, i valeria 5 aqui
         r = self.check("s = 0\nfor i in range(1, 5):\n    s = s + i", {})
         self.assertEqual((r["i"], r["s"]), (4, 10))
+
+    def test_mesmo_erro_dos_dois_lados_conta_como_acordo(self):
+        from codemath.evaluator import compare
+        code = "y = 1 // x"
+        rel = compare(code, denote(ir(code)), {"x": 0})
+        self.assertTrue(rel["ok"])
+        self.assertEqual(rel["mesmo_erro"], "ZeroDivisionError")
+
+    def test_tipo_diferente_e_divergencia(self):
+        # 1 == 1.0 no Python, mas a denotacao nao pode trocar int por float
+        from codemath.evaluator import compare
+        c = ir("y = x")
+        rel = compare("y = x / 1", denote(c), {"x": 2})
+        self.assertFalse(rel["ok"])
+
+    def test_rastro_do_laco(self):
+        from codemath.evaluator import trace_denotation
+        final, voltas = trace_denotation(denote(ir("while b != 0:\n    a, b = b, a % b")),
+                                         {"a": 48, "b": 18})
+        self.assertEqual([(v.state["a"], v.state["b"]) for v in voltas],
+                         [(48, 18), (18, 12), (12, 6), (6, 0)])
 
     def test_divergencia_detectada(self):
         from codemath.evaluator import Diverge, run_denotation
@@ -242,6 +406,27 @@ class TestHoare(unittest.TestCase):
         alvo = preservacao.operands[1]        # o consequente da implicacao
         self.assertEqual(alvo.subs, ((("x", BinOp("+", Var("x"), Const(1))),),))
 
+    def test_invariantes_numerados_na_ordem_do_texto(self):
+        # o calculo e' de tras para frente, mas I_k tem de ser o laco de F_k
+        r = self.wp("while x < 3:\n    x = x + 1\nwhile y < 3:\n    y = y + 1", "x > 0")
+        self.assertEqual(r.pre, Atom("I_{1}"))
+        self.assertEqual(r.invariants, ["I_{1}", "I_{2}"])
+
+    def test_invariante_dado_e_testado(self):
+        from codemath.api import hoare
+        prog = ir("q = 0\nr = a\nwhile r >= b:\n    r = r - b\n    q = q + 1")
+        bom = hoare(prog, "a == q*b + r and r < b", ["a == q*b + r"])
+        self.assertTrue(all(o["contraexemplo"] is None for o in bom["obrigacoes"]))
+        ruim = hoare(prog, "a == q*b + r and r < b", ["q == 0"])
+        self.assertIsNotNone(ruim["obrigacoes"][0]["contraexemplo"])
+
+    def test_obrigacao_com_invariante_faltando_nao_conta_como_testada(self):
+        from codemath.api import hoare
+        prog = ir("while x < 3:\n    while y < 3:\n        y = y + 1\n    x = x + 1")
+        r = hoare(prog, "x >= 3", ["x >= 0"])          # so' o invariante externo
+        preservacao_externa = r["obrigacoes"][0]
+        self.assertEqual(preservacao_externa["testada_em"], 0)
+
     def test_swap_gera_bloco_simultaneo(self):
         r = self.wp("while b != 0:\n    a, b = b, a % b", "a > 0")
         alvo = r.obligations[0].formula.operands[1]
@@ -273,3 +458,52 @@ class TestExemplos(unittest.TestCase):
                 with self.subTest(exemplo=os.path.basename(path), sigma=s0):
                     rel = compare(source, den, s0, max_steps=200_000)
                     self.assertTrue(rel["ok"], rel)
+
+
+class TestApi(unittest.TestCase):
+    def test_analise_completa(self):
+        from codemath.api import analisar
+        r = analisar("while b != 0:\n    a, b = b, a % b\nmdc = a",
+                     sigma={"a": 48, "b": 18}, unfold_n=1, pos="mdc > 0")
+        self.assertEqual(r["variaveis_livres"], ["a", "b"])
+        self.assertTrue(all("tex" in e and "text" in e for e in r["equacoes"]))
+        self.assertEqual(r["final"]["mdc"], 6)
+        self.assertEqual(r["passos"][0], {"text": "a = 48, b = 18", "note": "entrada"})
+        self.assertTrue(r["verificacao"][0]["ok"])
+        self.assertEqual(len(r["kleene"]), 2)
+
+    def test_json_serializavel(self):
+        import json
+        from codemath.api import analisar
+        json.dumps(analisar("x = 1", sigma={}))
+
+
+class TestCli(unittest.TestCase):
+    def run_cli(self, *argv, stdin=""):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest import mock
+        from codemath.cli import main
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch("sys.stdin", io.StringIO(stdin)), redirect_stdout(out), redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_codigos_de_saida(self):
+        self.assertEqual(self.run_cli("-f", "txt", stdin="x = 1")[0], 0)
+        self.assertEqual(self.run_cli(stdin="x = (")[0], 2)
+        self.assertEqual(self.run_cli(stdin="x = [1]")[0], 3)
+        self.assertEqual(self.run_cli("--sigma", "x=", stdin="y = x")[0], 2)
+        self.assertEqual(self.run_cli("--hoare", "x >", stdin="y = x")[0], 2)
+        self.assertEqual(self.run_cli("--rastro", stdin="y = x")[0], 2)
+
+    def test_formatos(self):
+        for f in ("md", "html", "tex", "raw", "txt", "json"):
+            with self.subTest(formato=f):
+                code, out, _ = self.run_cli("-f", f, "--unfold", "1", stdin="while x < 3:\n    x += 1")
+                self.assertEqual(code, 0)
+                self.assertTrue(out.strip())
+
+
+if __name__ == "__main__":
+    unittest.main()

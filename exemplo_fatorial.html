@@ -41,26 +41,26 @@ while i &lt;= n:
     fat = fat * i
     i = i + 1</pre>
 <h2>Denotação</h2>
-<div class="eq">$$[\![\,\mathit{fat} := 1;\; i := 1;\; \mathbf{while}\; i \leq n \;\mathbf{do}\; \mathit{fat} := \mathit{fat} \cdot i;\; i := i + 1\,]\!](\sigma) = \mathrm{fix}(F_{1})(\sigma[\mathit{fat} \mapsto 1][i \mapsto 1])$$</div>
+<div class="eq">$$[\![\,\mathit{fat} := 1;\; i := 1;\; \mathbf{while}\; i \leq n \;\mathbf{do}\; \left(\mathit{fat} := \mathit{fat} \cdot i;\; i := i + 1\right)\,]\!](\sigma) = \mathrm{fix}(F_{1})(\sigma[\mathit{fat} \mapsto 1][i \mapsto 1])$$</div>
 <p class="note">onde</p>
 <div class="eq">$$F_{1}(f)(\sigma) = \begin{cases}f\left(\sigma[\mathit{fat} \mapsto \sigma(\mathit{fat}) \cdot \sigma(i)][i \mapsto \sigma(i) + 1]\right), & \text{se } \sigma(i) \leq \sigma(n) \\ \sigma, & \text{caso contrário}\end{cases}$$</div>
 <h2>Aproximações de Kleene</h2>
 <p class="note">A cadeia F^0 ≤ F^1 ≤ F^2 ≤ … cresce: F^k acerta os estados que terminam em até k voltas do laço e devolve ⊥ nos demais. O menor ponto fixo é o supremo dessa cadeia.</p>
-<div class="lbl">F_{1}^0(⊥)(\sigma) =</div>
+<div class="lbl">F₁⁰(⊥)(σ) =</div>
 <div class="eq">$$\bot$$</div>
-<div class="lbl">F_{1}^1(⊥)(\sigma) =</div>
+<div class="lbl">F₁¹(⊥)(σ) =</div>
 <div class="eq">$$\begin{cases}\bot, & \text{se } \sigma(i) \leq \sigma(n) \\ \sigma, & \text{caso contrário}\end{cases}$$</div>
-<div class="lbl">F_{1}^2(⊥)(\sigma) =</div>
+<div class="lbl">F₁²(⊥)(σ) =</div>
 <div class="eq">$$\begin{cases}\begin{cases}\bot, & \text{se } \sigma(i) + 1 \leq \sigma(n) \\ \sigma[\mathit{fat} \mapsto \sigma(\mathit{fat}) \cdot \sigma(i)][i \mapsto \sigma(i) + 1], & \text{caso contrário}\end{cases}, & \text{se } \sigma(i) \leq \sigma(n) \\ \sigma, & \text{caso contrário}\end{cases}$$</div>
 <h2>Lógica de Hoare</h2>
-<p class="note">Correção parcial: a tripla só diz o que vale SE o programa terminar. Os invariantes I_k não são calculáveis — precisam ser inventados. É a mesma dificuldade do fix, vista de outro ângulo.</p>
+<p class="note">Correção parcial: a tripla só diz o que vale SE o programa terminar. Os invariantes I_k não são calculáveis — precisam ser inventados (--inv propõe um e procura contraexemplo; não encontrar não é prova). É a mesma dificuldade do fix, vista de outro ângulo.</p>
 <div class="lbl">precondição mais fraca  wp(c, Q) =</div>
 <div class="eq">$$I_{1}[i \mapsto 1][\mathit{fat} \mapsto 1]$$</div>
 <div class="lbl">pós-condição  Q =</div>
 <div class="eq">$$\mathit{fat} > 0$$</div>
-<div class="lbl">obrigação de prova (preservação de I_{1})</div>
+<div class="lbl">obrigação de prova (preservação de I₁)</div>
 <div class="eq">$$I_{1} \land i \leq n \Rightarrow I_{1}[i \mapsto i + 1][\mathit{fat} \mapsto \mathit{fat} \cdot i]$$</div>
-<div class="lbl">obrigação de prova (saída de I_{1})</div>
+<div class="lbl">obrigação de prova (saída de I₁)</div>
 <div class="eq">$$I_{1} \land \lnot\left(i \leq n\right) \Rightarrow \mathit{fat} > 0$$</div>
 <footer>Gerado por CodeMath.</footer>
 </main></body></html>

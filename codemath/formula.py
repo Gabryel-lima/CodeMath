@@ -8,8 +8,8 @@ Duas familias de nos:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass, fields, replace
+from typing import Callable, Iterator
 
 
 # --------------------------------------------------------------------------
@@ -80,6 +80,81 @@ class Atom(Expr):
     """
     name: str
     subs: tuple = ()
+
+
+@dataclass(frozen=True)
+class IfExp(Expr):
+    """Expressao condicional do Python: `a if c else b`.
+
+    [[a if c else b]](s) = [[a]](s) se [[c]](s), senao [[b]](s)
+    So o ramo escolhido e' avaliado (importa para divisao por zero).
+    """
+    cond: Expr
+    then_: Expr
+    else_: Expr
+
+
+@dataclass(frozen=True)
+class Func(Expr):
+    """Funcao matematica embutida: abs, min, max.
+
+    Nao confundir com funcoes definidas pelo usuario: essas sao
+    expandidas por substituicao no translator e nunca chegam ao IR.
+    """
+    name: str
+    args: tuple
+
+
+# Funcoes do Python aceitas como funcoes matematicas, com a aridade
+# minima (min/max precisam de pelo menos dois argumentos: com um so,
+# o argumento seria um iteravel, e listas estao fora do escopo).
+BUILTINS = {"abs": (1, 1), "min": (2, None), "max": (2, None)}
+
+
+# --------------------------------------------------------------------------
+# Percurso generico de expressoes
+# --------------------------------------------------------------------------
+# Toda funcao que "troca folhas e reconstroi" (substituicao, leitura no
+# estado, expansao de funcao) era um `if isinstance` por tipo de no,
+# repetido em quatro modulos. Um no novo exigia mexer nos quatro -- e
+# esquecer um so dava TypeError longe da causa. Agora cada uma trata so'
+# as folhas que lhe interessam e delega o resto para `map_expr`.
+#
+# Um campo e' filho se for Expr ou tupla de Expr. Atom fica de fora de
+# proposito: suas substituicoes pendentes nao sao subexpressoes livres
+# (ver hoare.substitute).
+
+
+def children(e: Expr) -> Iterator[Expr]:
+    """Subexpressoes diretas de `e`, na ordem dos campos."""
+    if isinstance(e, Atom):
+        return
+    for f in fields(e):
+        v = getattr(e, f.name)
+        if isinstance(v, Expr):
+            yield v
+        elif isinstance(v, tuple):
+            for x in v:
+                if isinstance(x, Expr):
+                    yield x
+
+
+def map_expr(e: Expr, fn: Callable[[Expr], Expr]) -> Expr:
+    """Reconstroi `e` aplicando `fn` a cada filho direto.
+
+    Nos sem filhos (Var, Const, Atom) voltam inalterados -- quem chama
+    trata as folhas antes de delegar.
+    """
+    if isinstance(e, Atom):
+        return e
+    novos = {}
+    for f in fields(e):
+        v = getattr(e, f.name)
+        if isinstance(v, Expr):
+            novos[f.name] = fn(v)
+        elif isinstance(v, tuple) and any(isinstance(x, Expr) for x in v):
+            novos[f.name] = tuple(fn(x) if isinstance(x, Expr) else x for x in v)
+    return replace(e, **novos) if novos else e
 
 
 # --------------------------------------------------------------------------

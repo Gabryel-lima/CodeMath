@@ -79,7 +79,8 @@ def cabecalho_do_exemplo(source: str):
 def main() -> int:
     partes = [CABECA]
     nav, corpo = [], []
-    for path in sorted(glob.glob(os.path.join("exemplos", "*.py"))):
+    base = os.path.dirname(os.path.abspath(__file__))
+    for path in sorted(glob.glob(os.path.join(base, "exemplos", "*.py"))):
         nome = os.path.basename(path)[:-3]
         with open(path, encoding="utf-8") as fh:
             source = fh.read()
@@ -120,7 +121,7 @@ def main() -> int:
     partes.append('<footer>Gerado por <code>python3 galeria.py</code>. '
                   'A matemática é renderizada com KaTeX (via CDN) — abra com internet.'
                   '</footer></main></body></html>')
-    with open("galeria.html", "w", encoding="utf-8") as fh:
+    with open(os.path.join(base, "galeria.html"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(partes))
     print("escrito em galeria.html")
     return 0

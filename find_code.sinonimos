@@ -1,0 +1,33 @@
+# Vocabulário do CodeMath para o find_code.py (uma ideia por linha; palavras
+# separadas por vírgula valem umas pelas outras; # começa comentário).
+# Acrescente aqui o que o projeto chama de um jeito e você chama de outro.
+semantica, denotacao, denotacional, denote, denotation, significado
+estado, state, sigma, ambiente
+leitura, lookup, ler
+substituicao, substituir, subst, substitute, trocar
+atualizacao, update, mapsto
+laco, loop, while, repeticao, iteracao, volta, voltas
+for, range, contador, counter
+ponto fixo, fix, fixpoint, menor ponto fixo, funcional, functional
+kleene, aproximacao, unfold, desdobrar, cadeia
+indefinido, bottom, bot, diverge, divergir, divergencia, nao termina
+condicional, if, cond, casos, cases, ternario, ifexp
+salto, break, continue, bandeira, flag
+funcao pura, expandir, expansao, inline, chamada, call
+hoare, wp, precondicao, posicao, poscondicao, tripla, triple
+invariante, invariant, obrigacao, obligation, prova
+contraexemplo, counterexample, amostra, sample
+verificar, verificador, comparar, compare, conferir, evaluator, avaliar, interpretar, machine, maquina
+rastro, trace, passos, steps
+traduzir, tradutor, translator, translate, visitor, visitar, vira, virar, acucar, desugar
+arvore, ast, sintaxe, parse, parser
+precedencia, prec, parenteses, parens, wrap
+latex, tex, katex, render, renderizar, desenhar, impressor
+unicode, texto, text, txt
+html, galeria, pagina
+variavel livre, free vars, livre, free
+atribuicao, assign, atribuir
+simultanea, paralela, par assign, parassign, swap, troca
+sequencia, seq, composicao
+interno, internal, fresco, fresh
+edumotion, expression_steps, api, analisar, json

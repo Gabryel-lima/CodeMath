@@ -25,8 +25,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .formula import (
-    Assign, BinOp, BoolOp, Cmd, Compare, Const, Expr, If, ParAssign, Seq,
-    Skip, UnOp, Var, While,
+    Assign, Cmd, Expr, If, ParAssign, Seq, Skip, Var, While, map_expr,
 )
 
 
@@ -154,17 +153,9 @@ def subst(expr: Expr, state: StateExpr) -> Expr:
     """Avalia sintaticamente [[e]](state): troca Var por Lookup resolvido."""
     if isinstance(expr, Var):
         return lookup(state, expr.name)
-    if isinstance(expr, Const) or isinstance(expr, Lookup):
+    if isinstance(expr, Lookup):
         return expr
-    if isinstance(expr, BinOp):
-        return BinOp(expr.op, subst(expr.left, state), subst(expr.right, state))
-    if isinstance(expr, Compare):
-        return Compare(expr.op, subst(expr.left, state), subst(expr.right, state))
-    if isinstance(expr, UnOp):
-        return UnOp(expr.op, subst(expr.operand, state))
-    if isinstance(expr, BoolOp):
-        return BoolOp(expr.op, tuple(subst(o, state) for o in expr.operands))
-    raise TypeError(f"expressao desconhecida: {expr!r}")
+    return map_expr(expr, lambda e: subst(e, state))
 
 
 # --------------------------------------------------------------------------
@@ -178,6 +169,7 @@ class Denoter:
         self._scopes: List[List[StateDef]] = [[]]
         self._n_fun = 0
         self._n_state = 0
+        self._depth = 0          # quantos funcionais envolvem o ponto atual
 
     # -- geradores de nome --
     def _fresh_functional(self) -> str:
@@ -189,10 +181,14 @@ class Denoter:
     def _fresh_bound(self) -> str:
         """Nome do estado ligado dentro de um funcional.
 
-        Whiles aninhados produzem funcionais aninhados; usar sempre
-        \\sigma criaria captura de variavel na leitura da formula.
+        Pela PROFUNDIDADE de aninhamento, nao pela contagem de lacos:
+        whiles aninhados precisam de nomes distintos (usar sempre
+        \\sigma criaria captura de variavel na leitura da formula),
+        mas whiles em sequencia sao escopos separados e podem todos
+        usar \\sigma. Antes, o quinto laco de um programa reto ja'
+        caia em \\sigma^{(4)}.
         """
-        i = self._n_fun - 1
+        i = self._depth
         if i < len(self._BOUND_NAMES):
             return self._BOUND_NAMES[i]
         return f"\\sigma^{{({i})}}"
@@ -266,7 +262,9 @@ class Denoter:
         name = self._fresh_functional()
         bound = Named(self._fresh_bound())  # estado ligado dentro do funcional
         self._scopes.append([])
+        self._depth += 1
         body_state = self.cmd(node.body, bound)
+        self._depth -= 1
         local = self._scopes.pop()
         self.functionals.append(
             FunctionalDef(
@@ -311,20 +309,8 @@ def replace_state(node, old: str, new: StateExpr):
     if isinstance(node, Lookup):
         # resimplifica: sigma[x |-> e](x) volta a ser e
         return lookup(replace_state(node.state, old, new), node.var)
-    if isinstance(node, Const):
-        return node
-    if isinstance(node, Var):
-        return node
-    if isinstance(node, BinOp):
-        return BinOp(node.op, replace_state(node.left, old, new),
-                     replace_state(node.right, old, new))
-    if isinstance(node, Compare):
-        return Compare(node.op, replace_state(node.left, old, new),
-                       replace_state(node.right, old, new))
-    if isinstance(node, UnOp):
-        return UnOp(node.op, replace_state(node.operand, old, new))
-    if isinstance(node, BoolOp):
-        return BoolOp(node.op, tuple(replace_state(o, old, new) for o in node.operands))
+    if isinstance(node, Expr):
+        return map_expr(node, lambda e: replace_state(e, old, new))
     raise TypeError(f"no desconhecido: {node!r}")
 
 

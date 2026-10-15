@@ -16,19 +16,20 @@ from __future__ import annotations
 from typing import List
 
 from .formula import (
-    Assign, Atom, BinOp, BoolOp, Cmd, Compare, Const, Expr, If, ParAssign,
-    Seq, Skip, UnOp, Var, While,
+    Assign, Atom, BinOp, BoolOp, Cmd, Compare, Const, Expr, Func, If, IfExp,
+    ParAssign, Seq, Skip, UnOp, Var, While,
 )
 from .rules import (
     Bottom, CondState, Denotation, FixApply, FunApply, Lookup, Named,
     StateExpr, Update,
 )
 
-LB = r"[\![\," 
+LB = r"[\![\,"
 RB = r"\,]\!]"
 
-# precedencia: maior liga mais forte
+# precedencia: maior liga mais forte (compartilhada com unicode_render)
 _PREC = {
+    "if": 0,
     "->": 1, "or": 2, "and": 3, "not": 4,
     "<": 5, "<=": 5, ">": 5, ">=": 5, "==": 5, "!=": 5,
     "+": 6, "-": 6,
@@ -46,31 +47,93 @@ _CMP_TEX = {
 _BOOL_TEX = {"and": r"\land", "or": r"\lor", "->": r"\Rightarrow"}
 
 
+def split_internal(name: str):
+    """Decompoe um nome interno do translator.
+
+    '#i' -> ('ctr', 'i', 0)    '#i.fim\'' -> ('fim', 'i', 1)
+    '#.brk' -> ('flag', 'brk', 0)
+    Devolve None para nomes do usuario.
+    """
+    if not name.startswith("#"):
+        return None
+    core = name[1:]
+    primes = len(core) - len(core.rstrip("'"))
+    core = core.rstrip("'")
+    if core.startswith("."):
+        return ("flag", core[1:], primes)
+    if "." in core:
+        var, _, suf = core.partition(".")
+        return (suf, var, primes)
+    return ("ctr", core, primes)
+
+
 def ident(name: str) -> str:
-    """Nome de variavel em LaTeX. `#x` e' o contador fresco de um `for`."""
-    if name.startswith("#"):
-        return r"\hat{" + ident(name[1:]) + "}"
+    """Nome de variavel em LaTeX.
+
+    Nomes internos (ver translator): `#i` -> \\hat{i} (contador do for),
+    `#i.fim` -> \\hat{i}_{\\mathrm{fim}}, `#.brk` -> \\mathsf{brk}; cada
+    apostrofo final vira uma linha (laco aninhado).
+    """
+    parts = split_internal(name)
+    if parts is not None:
+        kind, base, primes = parts
+        if kind == "flag":
+            out = r"\mathsf{" + base + "}"
+        elif kind == "ctr":
+            out = r"\hat{" + ident(base) + "}"
+        else:
+            out = r"\hat{" + ident(base) + r"}_{\mathrm{" + kind + "}}"
+        return out + "'" * primes
     if len(name) == 1:
         return name
     return r"\mathit{" + name.replace("_", r"\_") + "}"
 
 
-def _prec(e: Expr) -> int:
-    if isinstance(e, BinOp):
-        return _PREC[e.op]
-    if isinstance(e, Compare):
-        return _PREC[e.op]
-    if isinstance(e, BoolOp):
+def prec(e: Expr) -> int:
+    """Precedencia do no mais externo de `e` (maior liga mais forte)."""
+    if isinstance(e, (BinOp, Compare, BoolOp)):
         return _PREC[e.op]
     if isinstance(e, UnOp):
         return _PREC["neg"] if e.op == "-" else _PREC["not"]
+    if isinstance(e, IfExp):
+        return _PREC["if"]
     return _ATOM
 
 
-def _wrap(e: Expr, outer: int, *, strict: bool = False) -> str:
-    inner = _prec(e)
-    s = expr_to_latex(e)
+def needs_parens(e: Expr, outer: int, strict: bool = False,
+                 parent_op: str = "", side: str = "") -> bool:
+    """Decide parenteses em volta de um operando.
+
+    Alem da precedencia, tres casos que a tabela sozinha erra (a regra
+    vale para os dois renderizadores):
+      - menos unario como operando DIREITO de operador binario:
+        `a - -b` e `a \\cdot -b` leem mal; sai `a - (-b)`;
+      - `mod` misturado com produto: `a \\bmod b \\cdot c` e' ambiguo
+        para quem le, embora a tabela diga que e' (a mod b)*c;
+      - implicacao dentro de implicacao: `a => b => c` nao tem
+        associatividade combinada.
+    """
+    inner = prec(e)
     if inner < outer or (strict and inner == outer):
+        return True
+    if side == "right" and isinstance(e, UnOp) and e.op == "-" and parent_op in _PREC:
+        return True
+    mult = ("*", "%")
+    if isinstance(e, BinOp) and parent_op in mult and e.op in mult and e.op != parent_op:
+        return True
+    if isinstance(e, BoolOp) and e.op == "->" and parent_op == "->":
+        return True
+    return False
+
+
+def _prec(e: Expr) -> int:
+    return prec(e)
+
+
+def _wrap(e: Expr, outer: int, *, strict: bool = False, parent_op: str = "",
+          side: str = "") -> str:
+    s = expr_to_latex(e)
+    if needs_parens(e, outer, strict, parent_op, side):
         return r"\left(" + s + r"\right)"
     return s
 
@@ -85,7 +148,9 @@ def expr_to_latex(e: Expr) -> str:
         if e.value is False:
             return r"\mathbf{false}"
         if e.value is None:
-            return r"\bot"
+            # None e' um VALOR do Python, nao o indefinido: renderizar
+            # como \\bot confundia com a funcao que diverge
+            return r"\mathbf{None}"
         return str(e.value)
 
     if isinstance(e, Var):
@@ -105,7 +170,7 @@ def expr_to_latex(e: Expr) -> str:
         if e.op == "-":
             return "-" + _wrap(e.operand, _PREC["neg"])
         # ¬ sempre com parenteses fora de atomos: `\lnot i \leq n` le mal
-        if isinstance(e.operand, (Var, Const, Atom)) or type(e.operand).__name__ == "Lookup":
+        if prec(e.operand) == _ATOM:
             return r"\lnot " + expr_to_latex(e.operand)
         return r"\lnot\left(" + expr_to_latex(e.operand) + r"\right)"
 
@@ -118,13 +183,14 @@ def expr_to_latex(e: Expr) -> str:
             return (r"\left\lfloor \frac{" + expr_to_latex(e.left) + "}{"
                     + expr_to_latex(e.right) + r"} \right\rfloor")
         if e.op == "%":
-            return _wrap(e.left, p) + r" \bmod " + _wrap(e.right, p, strict=True)
+            return (_wrap(e.left, p, parent_op="%") + r" \bmod "
+                    + _wrap(e.right, p, strict=True, parent_op="%", side="right"))
         if e.op == "**":
             # exponenciacao associa a direita
             return _wrap(e.left, p, strict=True) + "^{" + expr_to_latex(e.right) + "}"
         # + - * : associativos a esquerda
-        return (_wrap(e.left, p) + " " + _BIN_TEX[e.op] + " "
-                + _wrap(e.right, p, strict=(e.op == "-")))
+        return (_wrap(e.left, p, parent_op=e.op) + " " + _BIN_TEX[e.op] + " "
+                + _wrap(e.right, p, strict=(e.op == "-"), parent_op=e.op, side="right"))
 
     if isinstance(e, Compare):
         p = _PREC[e.op]
@@ -134,7 +200,18 @@ def expr_to_latex(e: Expr) -> str:
     if isinstance(e, BoolOp):
         p = _PREC[e.op]
         sep = " " + _BOOL_TEX[e.op] + " "
-        return sep.join(_wrap(o, p) for o in e.operands)
+        return sep.join(_wrap(o, p, parent_op=e.op) for o in e.operands)
+
+    if isinstance(e, IfExp):
+        return (r"\begin{cases}" + expr_to_latex(e.then_)
+                + r", & \text{se } " + expr_to_latex(e.cond) + r" \\ "
+                + expr_to_latex(e.else_) + r", & \text{caso contrário}\end{cases}")
+
+    if isinstance(e, Func):
+        if e.name == "abs":
+            return r"\left\lvert " + expr_to_latex(e.args[0]) + r" \right\rvert"
+        return ("\\" + e.name + r"\left(" + ", ".join(expr_to_latex(a) for a in e.args)
+                + r"\right)")
 
     raise TypeError(f"expressao desconhecida: {e!r}")
 
@@ -165,6 +242,17 @@ def state_to_latex(s: StateExpr) -> str:
 # --------------------------------------------------------------------------
 # Sintaxe abstrata (para aparecer dentro de [[ ]])
 # --------------------------------------------------------------------------
+def _cmd_block(c: Cmd) -> str:
+    """Corpo de laco ou ramo de if: sequencia vai entre parenteses.
+
+    Sem isso, `while b do c1; c2; c3` nao diz onde o laco acaba. Segue
+    a convencao dos livros-texto: `;` liga mais fraco que if/while, e
+    um corpo composto se escreve `while b do (c1; c2)`.
+    """
+    s = cmd_to_latex(c)
+    return r"\left(" + s + r"\right)" if isinstance(c, Seq) else s
+
+
 def cmd_to_latex(c: Cmd) -> str:
     if isinstance(c, Skip):
         return r"\mathbf{skip}"
@@ -177,11 +265,11 @@ def cmd_to_latex(c: Cmd) -> str:
         return r";\; ".join(cmd_to_latex(x) for x in c.commands)
     if isinstance(c, If):
         return (r"\mathbf{if}\; " + expr_to_latex(c.cond)
-                + r" \;\mathbf{then}\; " + cmd_to_latex(c.then_branch)
-                + r" \;\mathbf{else}\; " + cmd_to_latex(c.else_branch))
+                + r" \;\mathbf{then}\; " + _cmd_block(c.then_branch)
+                + r" \;\mathbf{else}\; " + _cmd_block(c.else_branch))
     if isinstance(c, While):
         return (r"\mathbf{while}\; " + expr_to_latex(c.cond)
-                + r" \;\mathbf{do}\; " + cmd_to_latex(c.body))
+                + r" \;\mathbf{do}\; " + _cmd_block(c.body))
     raise TypeError(f"comando desconhecido: {c!r}")
 
 
