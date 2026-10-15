@@ -3,3 +3,5 @@ __pycache__/
 saida.md
 saida.html
 galeria.html
+build/
+*.egg-info/

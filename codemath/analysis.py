@@ -1,70 +1,89 @@
 """Analises simples sobre o IR sintatico."""
 from __future__ import annotations
 
-from typing import Set
+from typing import FrozenSet, Set
 
 from .formula import (
-    Assign, Atom, BinOp, BoolOp, Cmd, Compare, Const, Expr, If, ParAssign,
-    Seq, Skip, UnOp, Var, While,
+    Assign, Atom, Cmd, Expr, If, ParAssign, Seq, Skip, Var, While, children,
 )
 
 
 def expr_vars(e: Expr) -> Set[str]:
+    """Variaveis lidas por uma expressao."""
     if isinstance(e, Var):
         return {e.name}
-    if isinstance(e, (Const, Atom)):
+    if isinstance(e, Atom):
         return set()
-    if isinstance(e, BinOp):
-        return expr_vars(e.left) | expr_vars(e.right)
-    if isinstance(e, Compare):
-        return expr_vars(e.left) | expr_vars(e.right)
-    if isinstance(e, UnOp):
-        return expr_vars(e.operand)
-    if isinstance(e, BoolOp):
-        return set().union(*(expr_vars(o) for o in e.operands))
-    raise TypeError(f"expressao desconhecida: {e!r}")
+    out: Set[str] = set()
+    for c in children(e):
+        out |= expr_vars(c)
+    return out
 
 
 def free_vars(c: Cmd) -> Set[str]:
-    """Variaveis que o programa LE sem ter escrito antes.
+    """Variaveis que o programa PODE ler sem ter escrito antes.
 
-    Sao exatamente as que precisam existir no estado inicial. A conta
-    e' conservadora: dentro de `while` e dos dois ramos de `if` nao se
-    sabe se a atribuicao acontece, entao as escritas ali nao contam
-    como definitivas.
+    Sao exatamente as que precisam existir no estado inicial. E' a
+    analise classica de atribuicao definitiva: percorre o programa
+    levando o conjunto do que COM CERTEZA ja' foi escrito.
+
+      - em `c1; c2`, o que c1 escreve vale para c2;
+      - depois de um `if`, so' vale o que os DOIS ramos escrevem;
+      - depois de um `while`, so' vale o que ja' valia antes (o corpo
+        pode rodar zero vezes), mas DENTRO do corpo as escritas
+        anteriores da mesma volta contam.
+
+    A versao antiga ignorava qualquer escrita dentro de laco, e por
+    isso `for i in range(n): s = s + i` declarava `i` livre -- embora
+    o corpo sempre comece com `i := #i`.
     """
     free: Set[str] = set()
-    written: Set[str] = set()
 
-    def walk(cmd: Cmd, sure: bool) -> None:
-        nonlocal free, written
+    def leia(e: Expr, escrito: FrozenSet[str]) -> None:
+        free.update(expr_vars(e) - escrito)
+
+    def walk(cmd: Cmd, escrito: FrozenSet[str]) -> FrozenSet[str]:
         if isinstance(cmd, Skip):
-            return
+            return escrito
         if isinstance(cmd, Assign):
-            free |= expr_vars(cmd.value) - written
-            if sure:
-                written.add(cmd.target)
-            return
+            leia(cmd.value, escrito)
+            return escrito | {cmd.target}
         if isinstance(cmd, ParAssign):
             for v in cmd.values:
-                free |= expr_vars(v) - written
-            if sure:
-                written |= set(cmd.targets)
-            return
+                leia(v, escrito)
+            return escrito | set(cmd.targets)
         if isinstance(cmd, Seq):
             for sub in cmd.commands:
-                walk(sub, sure)
-            return
+                escrito = walk(sub, escrito)
+            return escrito
         if isinstance(cmd, If):
-            free |= expr_vars(cmd.cond) - written
-            walk(cmd.then_branch, False)
-            walk(cmd.else_branch, False)
-            return
+            leia(cmd.cond, escrito)
+            return walk(cmd.then_branch, escrito) & walk(cmd.else_branch, escrito)
         if isinstance(cmd, While):
-            free |= expr_vars(cmd.cond) - written
-            walk(cmd.body, False)
-            return
+            leia(cmd.cond, escrito)
+            walk(cmd.body, escrito)
+            return escrito
         raise TypeError(f"comando desconhecido: {cmd!r}")
 
-    walk(c, True)
+    walk(c, frozenset())
     return free
+
+
+def assigned_vars(c: Cmd) -> Set[str]:
+    """Variaveis escritas em algum caminho do programa."""
+    if isinstance(c, Assign):
+        return {c.target}
+    if isinstance(c, ParAssign):
+        return set(c.targets)
+    if isinstance(c, Seq):
+        return set().union(*(assigned_vars(x) for x in c.commands))
+    if isinstance(c, If):
+        return assigned_vars(c.then_branch) | assigned_vars(c.else_branch)
+    if isinstance(c, While):
+        return assigned_vars(c.body)
+    return set()
+
+
+def is_internal(name: str) -> bool:
+    """Variavel criada pela traducao (contador, limite, bandeira)."""
+    return name.startswith("#")
