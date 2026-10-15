@@ -9,6 +9,7 @@ Sem dependências externas: só a stdlib (`ast`).
 ```bash
 python3 main.py exemplos/06_euclides.py                      # markdown
 python3 main.py exemplos/06_euclides.py -f html -o saida.html # HTML com KaTeX
+python3 main.py exemplos/05_fatorial.py -f txt               # Unicode, sem LaTeX (terminal, vídeo)
 python3 main.py exemplos/05_fatorial.py --unfold 3            # aproximações de Kleene
 python3 main.py exemplos/05_fatorial.py --hoare "fat > 0"     # lógica de Hoare
 python3 main.py exemplos/06_euclides.py --verificar --sigma "a=48,b=18"
@@ -45,9 +46,14 @@ codemath/rules.py            IR sintático -> IR semântico (StateExpr) + Kleene
 codemath/hoare.py            IR sintático -> precondição mais fraca
 codemath/evaluator.py        executa o IR semântico e compara com o Python
 codemath/latex_render.py     IR semântico -> LaTeX / Markdown / HTML
+codemath/unicode_render.py   IR semântico -> texto Unicode (σ[x ↦ 0], fix(F₁)(σ), ⟦…⟧)
 ```
 
-Nenhuma string de LaTeX é produzida fora de `latex_render.py`.
+Nenhuma string de LaTeX é produzida fora de `latex_render.py`. O
+`unicode_render.py` segue a mesma estrutura e as mesmas precedências, para
+quem mostra a fórmula onde não há TeX: `equation_pairs(cmd, den)` devolve
+`(latex, unicode)` de cada equação, na mesma ordem (o EduMotion usa isso
+para animar a semântica de um trecho de código).
 
 ## Regras implementadas
 

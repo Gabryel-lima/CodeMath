@@ -273,3 +273,51 @@ class TestExemplos(unittest.TestCase):
                 with self.subTest(exemplo=os.path.basename(path), sigma=s0):
                     rel = compare(source, den, s0, max_steps=200_000)
                     self.assertTrue(rel["ok"], rel)
+
+
+class TestUnicode(unittest.TestCase):
+    """Saída sem LaTeX (unicode_render): mesmas equações, mesma ordem, legíveis num quadro de vídeo."""
+
+    def eqs(self, code):
+        from codemath.unicode_render import render_equations_unicode
+        cmd = ir(code)
+        return render_equations_unicode(cmd, denote(cmd))
+
+    def test_atribuicao(self):
+        self.assertEqual(self.eqs("x = 0")[0], "⟦x := 0⟧(σ) = σ[x ↦ 0]")
+
+    def test_troca_simultanea(self):
+        self.assertEqual(self.eqs("x, y = y, x")[0], "⟦x, y := y, x⟧(σ) = σ[x ↦ σ(y)][y ↦ σ(x)]")
+
+    def test_laco_vira_fix_e_funcional_em_duas_linhas(self):
+        eqs = self.eqs("x = 0\nwhile x < 10:\n    x = x + 1")
+        self.assertTrue(eqs[0].endswith("= fix(F₁)(σ[x ↦ 0])"), eqs[0])
+        then_, else_ = eqs[1].split("\n")
+        self.assertIn("F₁(f)(σ) = { f(σ[x ↦ σ(x) + 1]),  se σ(x) < 10", then_)
+        self.assertEqual(else_.strip(), "{ σ,  caso contrário")
+        self.assertEqual(then_.index("{"), else_.index("{"), "os ramos ficam alinhados")
+
+    def test_sem_comando_latex_na_saida(self):
+        import glob
+        base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "exemplos")
+        for path in sorted(glob.glob(os.path.join(base, "*.py"))):
+            with open(path, encoding="utf-8") as fh:
+                source = fh.read()
+            for eq in self.eqs(source):
+                with self.subTest(exemplo=os.path.basename(path)):
+                    self.assertNotRegex(eq, r"\\[a-zA-Z]|[{}]_|\^\{", eq)
+
+    def test_pares_alinhados_com_o_latex(self):
+        from codemath.unicode_render import equation_pairs
+        cmd = ir("fat = 1\ni = 1\nwhile i <= n:\n    fat = fat * i\n    i = i + 1")
+        pares = equation_pairs(cmd, denote(cmd))
+        self.assertEqual(len(pares), len(render_equations(cmd, denote(cmd))))
+        self.assertIn(r"\mathrm{fix}", pares[0][0])
+        self.assertIn("fix(F₁)", pares[0][1])
+
+    def test_operadores(self):
+        from codemath.unicode_render import expr_to_unicode
+        self.assertEqual(expr_to_unicode(ir("y = a // b").value), "⌊a / b⌋")
+        self.assertEqual(expr_to_unicode(ir("y = x ** 2").value), "x²")
+        self.assertEqual(expr_to_unicode(ir("y = a % b").value), "a mod b")
+        self.assertEqual(expr_to_unicode(ir("y = a - (b - c)").value), "a − (b − c)")

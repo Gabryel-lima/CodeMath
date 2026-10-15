@@ -17,6 +17,7 @@ from .latex_render import (
 from .parser import dump, parse_source
 from .rules import denote, unfold
 from .translator import translate, UnsupportedNode
+from .unicode_render import render_text
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,8 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
 """)
     p.add_argument("arquivo", nargs="?", help="arquivo .py (padrão: stdin)")
     p.add_argument("-o", "--saida", help="escreve o resultado em um arquivo")
-    p.add_argument("-f", "--formato", choices=("md", "html", "tex", "raw"),
-                   default="md", help="formato de saída (padrão: md)")
+    p.add_argument("-f", "--formato", choices=("md", "html", "tex", "raw", "txt"),
+                   default="md", help="formato de saída (padrão: md; txt = Unicode, sem LaTeX)")
     p.add_argument("--ast", action="store_true",
                    help="só imprime a AST do Python e sai")
     p.add_argument("--unfold", type=int, metavar="N",
@@ -155,6 +156,8 @@ def main(argv=None) -> int:
         out = render_tex(source, cmd, den, sections)
     elif args.formato == "html":
         out = render_html(source, cmd, den, sections, titulo)
+    elif args.formato == "txt":
+        out = render_text(source, cmd, den)
     elif args.formato == "raw":
         eqs = list(render_equations(cmd, den))
         for _, _, items in sections:
