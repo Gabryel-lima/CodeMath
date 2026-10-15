@@ -142,26 +142,32 @@ def expr_to_unicode(e: Expr) -> str:
 # --------------------------------------------------------------------------
 # Estados
 # --------------------------------------------------------------------------
-def _cases(then_: str, cond: str, else_: str, recuo: int) -> str:
+def _cases(then_: str, cond: str, else_: str, recuo: int | None) -> str:
+    """`cases` em duas linhas alinhadas (recuo = coluna da chave); recuo None = forma em linha, para um
+    `cases` dentro de outro, que em duas linhas perderia o alinhamento."""
+    if recuo is None:
+        return "(" + then_ + " se " + cond + "; senão " + else_ + ")"
     pad = " " * recuo
     return "{ " + then_ + ",  se " + cond + "\n" + pad + "{ " + else_ + ",  caso contrário"
 
 
-def state_to_unicode(s: StateExpr, recuo: int = 0) -> str:
+def state_to_unicode(s: StateExpr, recuo: int | None = 0) -> str:
+    """Estado em Unicode. `recuo` é a coluna onde o estado começa na linha (para alinhar os ramos de um
+    `cases` de topo); estados dentro de outros vão em linha."""
     if isinstance(s, Bottom):
         return "⊥"
     if isinstance(s, Named):
         return name_to_unicode(s.name)
     if isinstance(s, Update):
-        return (state_to_unicode(s.base, recuo) + "[" + ident(s.var) + " ↦ "
+        return (state_to_unicode(s.base, None) + "[" + ident(s.var) + " ↦ "
                 + expr_to_unicode(s.value) + "]")
     if isinstance(s, FixApply):
-        return "fix(" + name_to_unicode(s.functional) + ")(" + state_to_unicode(s.arg, recuo) + ")"
+        return "fix(" + name_to_unicode(s.functional) + ")(" + state_to_unicode(s.arg, None) + ")"
     if isinstance(s, FunApply):
-        return name_to_unicode(s.fun) + "(" + state_to_unicode(s.arg, recuo) + ")"
+        return name_to_unicode(s.fun) + "(" + state_to_unicode(s.arg, None) + ")"
     if isinstance(s, CondState):
-        return _cases(state_to_unicode(s.then_), expr_to_unicode(s.cond),
-                      state_to_unicode(s.else_), recuo)
+        return _cases(state_to_unicode(s.then_, None), expr_to_unicode(s.cond),
+                      state_to_unicode(s.else_, None), recuo)
     raise TypeError(f"estado desconhecido: {s!r}")
 
 
@@ -195,14 +201,15 @@ def denote_brackets(c: Cmd, state: str = r"\sigma") -> str:
 # --------------------------------------------------------------------------
 def render_equations_unicode(cmd: Cmd, den: Denotation) -> List[str]:
     """Mesmas equacoes de `latex_render.render_equations`, na mesma ordem, em Unicode."""
-    eqs = [denote_brackets(cmd, den.initial_state) + " = " + state_to_unicode(den.result)]
+    cab = denote_brackets(cmd, den.initial_state) + " = "
+    eqs = [cab + state_to_unicode(den.result, len(cab))]
     for sd in den.state_defs:
         cab = name_to_unicode(sd.name) + " = "
         eqs.append(cab + state_to_unicode(sd.value, len(cab)))
     for fd in den.functionals:
         cab = (name_to_unicode(fd.name) + "(" + fd.param + ")(" + name_to_unicode(fd.state) + ") = ")
-        eqs.append(cab + _cases(state_to_unicode(fd.then_), expr_to_unicode(fd.cond),
-                                state_to_unicode(fd.else_), len(cab)))
+        eqs.append(cab + _cases(state_to_unicode(fd.then_, None), expr_to_unicode(fd.cond),
+                                state_to_unicode(fd.else_, None), len(cab)))
         for sd in fd.local_defs:
             cab = name_to_unicode(sd.name) + " = "
             eqs.append(cab + state_to_unicode(sd.value, len(cab)))

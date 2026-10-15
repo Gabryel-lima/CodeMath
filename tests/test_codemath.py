@@ -315,6 +315,15 @@ class TestUnicode(unittest.TestCase):
         self.assertIn(r"\mathrm{fix}", pares[0][0])
         self.assertIn("fix(F₁)", pares[0][1])
 
+    def test_kleene_com_cases_aninhado_fica_em_linha(self):
+        from codemath.rules import unfold
+        from codemath.unicode_render import state_to_unicode
+        cmd = ir("x = 0\nwhile x < 10:\n    x = x + 1")
+        f2 = state_to_unicode(unfold(denote(cmd), "F_{1}", 2), 0)
+        linhas = f2.split("\n")
+        self.assertEqual(len(linhas), 2, f2)
+        self.assertIn("(⊥ se σ(x) + 1 < 10; senão σ[x ↦ σ(x) + 1])", linhas[0])
+
     def test_operadores(self):
         from codemath.unicode_render import expr_to_unicode
         self.assertEqual(expr_to_unicode(ir("y = a // b").value), "⌊a / b⌋")
