@@ -95,6 +95,18 @@ python3 galeria.py                          # galeria.html com todos os exemplos
   uma construção desconhecida (`stmt_Expr` recusa chamada com efeito colateral
   em vez de tratá-la como `skip`).
 
+## Vídeos com o EduMotion (voz do dono, roteiro e transcrição)
+
+O CodeMath entra nos vídeos do EduMotion só como explicação de código (`edu-video code semantics`, contrato `codemath.api`). O fluxo completo de produção está no `CLAUDE.md` e em `docs/VOZ.md` do **EduMotion**; o resumo do que vale aqui:
+- **Roteiro feito junto com o dono**, frases curtas numeradas, aprovado antes de gravar. Demonstração antes de ensino técnico.
+- O dono grava **só o áudio** e o prepara com `scripts/preparar_audio.sh` do EduMotion (FFmpeg: mono, `loudnorm` −16 LUFS, MP3 ≤ 30 MB).
+- Um Whisper pequeno (`scripts/transcrever_sherpa.py` na nuvem, `transcrever_audio.py` na máquina do dono) diz **onde cada frase foi dita**; `edu-video voice import --transcript` fica com a última tentativa. É aproximado: o reconhecimento erra nomes e números, então o dono ouve as frases marcadas.
+- Para explicar um programa no vídeo, use um **modelo em Python** (subconjunto aceito) e confira-o contra o código real antes de dizer que "bate".
+
+## Quem usa o CodeMath (e como manter o contrato)
+
+Além do EduMotion (vídeos: `edu-video code semantics|trace`, via `codemath.api`), o CodeMath é uma biblioteca/CLI genérica e pode ser usado em **qualquer projeto** que precise explicar ou verificar um programa Python (o CharyRick o usa indiretamente, nos vídeos que explicam regras do jogo com um modelo em Python). Por isso: mantenha `codemath.api` estável e documentada, sem nada específico de um consumidor; ao mudar o formato de `api.analisar`, suba `VERSAO_API` e **avise no commit** para o EduMotion subir `SUPPORTED_API`. O fluxo de vídeo está no `CLAUDE.md` do EduMotion.
+
 ## Idioma
 
 Código, comentários, mensagens de commit e documentação em português. Os
